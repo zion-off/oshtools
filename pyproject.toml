@@ -1,0 +1,59 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "osh"
+version = "0.1.0"
+authors = [
+    {name = "zion", email = "atibjawad@gmail.com"},
+]
+description = "A simple Python logging library for chat applications"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.8"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Logging",
+]
+keywords = ["llm", "chat", "logging", "gcp", "google-cloud", "logger"]
+dependencies = []
+
+[project.optional-dependencies]
+gcp = ["google-cloud-logging>=3.0.0"]
+dev = [
+    "pytest>=7.0.0",
+    "black>=23.0.0",
+    "isort>=5.0.0",
+    "flake8>=6.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/zion-off/osh"
+Repository = "https://github.com/zion-off/osh"
+Issues = "https://github.com/zion-off/osh/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["osh*"]
+
+[tool.setuptools.package-dir]
+"" = "src"
+
+[tool.black]
+line-length = 88
+target-version = ['py38']
+
+[tool.isort]
+profile = "black"
+line_length = 88 
