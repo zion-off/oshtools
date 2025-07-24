@@ -18,13 +18,13 @@ local development and Google Cloud Platform (GCP) environments.
 ### Basic Installation
 
 ```bash
-pip install osh
+pip install oshtools
 ```
 
 ### With Google Cloud Support
 
 ```bash
-pip install osh[gcp]
+pip install oshtools[gcp]
 ```
 
 ## Quick Start

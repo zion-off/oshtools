@@ -80,7 +80,7 @@ jobs:
 
     environment:
       name: pypi
-      url: https://pypi.org/project/osh/
+      url: https://pypi.org/project/oshtools/
 
     steps:
       - name: Retrieve release distributions
