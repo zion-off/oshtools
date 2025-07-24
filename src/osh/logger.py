@@ -2,7 +2,7 @@ import logging
 import os
 import sys
 import textwrap
-from typing import Any
+from typing import Any, Optional, Union
 
 IS_GCP_ENVIRONMENT = bool(os.getenv("K_SERVICE")) or bool(
     os.getenv("GOOGLE_CLOUD_PROJECT")
@@ -83,7 +83,7 @@ class LocalColorFormatter(logging.Formatter):
         color_bg = METHOD_TO_COLOR_BG.get(custom_log_type, CYAN_BG)
 
         message_content = record.getMessage()
-        if isinstance(record.msg, dict | list) and not isinstance(message_content, str):
+        if isinstance(record.msg, (dict, list)) and not isinstance(message_content, str):
             pass
 
         header = f"{timestamp_str}{color_bg}{BLACK_FG}{self.logger_display_name_formatted}{RESET} "
@@ -184,14 +184,14 @@ class Logger:
     """
 
     def __init__(
-        self, name: str, level: int = logging.INFO, thread_id: str | None = None
+        self, name: str, level: int = logging.INFO, thread_id: Optional[str] = None
     ):
         """Initialize the Logger.
 
         Args:
             name (str): The name of the logger.
             level (int): The logging level.
-            thread_id (str | None): Optional thread ID for logging context.
+            thread_id (Optional[str]): Optional thread ID for logging context.
         """
         self.raw_name = name
         self.display_name_formatted = f"{name:<15}".upper()
@@ -284,7 +284,7 @@ class Logger:
     def _process_log_call(
         self,
         method_type: str,
-        thread_id: str | None = None,
+        thread_id: Optional[str] = None,
         *args: Any,
         **kwargs: Any,
     ):
@@ -292,12 +292,12 @@ class Logger:
 
         Args:
             method_type (str): The type of log method (e.g., 'log', 'error').
-            thread_id (str | None): Optional thread ID for logging context.
+            thread_id (Optional[str]): Optional thread ID for logging context.
             *args: Positional arguments for the log message.
             **kwargs: Keyword arguments for the log message.
         """
         message_val: Any
-        if len(args) == 1 and isinstance(args[0], dict | list):
+        if len(args) == 1 and isinstance(args[0], (dict, list)):
             message_val = args[0]
         else:
             message_val = " ".join(str(arg) for arg in args)
@@ -333,81 +333,81 @@ class Logger:
             extra=extra_payload_for_record,
         )
 
-    def log(self, *args: Any, thread_id: str | None = None, **kwargs: Any) -> None:
+    def log(self, *args: Any, thread_id: Optional[str] = None, **kwargs: Any) -> None:
         """Log a message with the 'log' level.
 
         Args:
-            thread_id (str | None): Optional thread ID for logging context.
+            thread_id (Optional[str]): Optional thread ID for logging context.
             *args: Positional arguments for the log message.
             **kwargs: Keyword arguments for the log message.
         """
         self._process_log_call("log", thread_id, *args, **kwargs)
 
-    def info(self, *args: Any, thread_id: str | None = None, **kwargs: Any) -> None:
+    def info(self, *args: Any, thread_id: Optional[str] = None, **kwargs: Any) -> None:
         """Log a message with the 'info' level.
 
         Args:
-            thread_id (str | None): Optional thread ID for logging context.
+            thread_id (Optional[str]): Optional thread ID for logging context.
             *args: Positional arguments for the log message.
             **kwargs: Keyword arguments for the log message.
         """
         self._process_log_call("info", thread_id, *args, **kwargs)
 
-    def runtime(self, *args: Any, thread_id: str | None = None, **kwargs: Any) -> None:
+    def runtime(self, *args: Any, thread_id: Optional[str] = None, **kwargs: Any) -> None:
         """Log a message with the 'runtime' level.
 
         Args:
-            thread_id (str | None): Optional thread ID for logging context.
+            thread_id (Optional[str]): Optional thread ID for logging context.
             *args: Positional arguments for the log message.
             **kwargs: Keyword arguments for the log message.
         """
         self._process_log_call("runtime", thread_id, *args, **kwargs)
 
-    def think(self, *args: Any, thread_id: str | None = None, **kwargs: Any) -> None:
+    def think(self, *args: Any, thread_id: Optional[str] = None, **kwargs: Any) -> None:
         """Log a message with the 'think' level.
 
         Args:
-            thread_id (str | None): Optional thread ID for logging context.
+            thread_id (Optional[str]): Optional thread ID for logging context.
             *args: Positional arguments for the log message.
             **kwargs: Keyword arguments for the log message.
         """
         self._process_log_call("think", thread_id, *args, **kwargs)
 
-    def debug(self, *args: Any, thread_id: str | None = None, **kwargs: Any) -> None:
+    def debug(self, *args: Any, thread_id: Optional[str] = None, **kwargs: Any) -> None:
         """Log a message with the 'debug' level.
 
         Args:
-            thread_id (str | None): Optional thread ID for logging context.
+            thread_id (Optional[str]): Optional thread ID for logging context.
             *args: Positional arguments for the log message.
             **kwargs: Keyword arguments for the log message.
         """
         self._process_log_call("debug", thread_id, *args, **kwargs)
 
-    def warn(self, *args: Any, thread_id: str | None = None, **kwargs: Any) -> None:
+    def warn(self, *args: Any, thread_id: Optional[str] = None, **kwargs: Any) -> None:
         """Log a message with the 'warn' level.
 
         Args:
-            thread_id (str | None): Optional thread ID for logging context.
+            thread_id (Optional[str]): Optional thread ID for logging context.
             *args: Positional arguments for the log message.
             **kwargs: Keyword arguments for the log message.
         """
         self._process_log_call("warn", thread_id, *args, **kwargs)
 
-    def error(self, *args: Any, thread_id: str | None = None, **kwargs: Any) -> None:
+    def error(self, *args: Any, thread_id: Optional[str] = None, **kwargs: Any) -> None:
         """Log a message with the 'error' level.
 
         Args:
-            thread_id (str | None): Optional thread ID for logging context.
+            thread_id (Optional[str]): Optional thread ID for logging context.
             *args: Positional arguments for the log message.
             **kwargs: Keyword arguments for the log message.
         """
         self._process_log_call("error", thread_id, *args, **kwargs)
 
-    def critical(self, *args: Any, thread_id: str | None = None, **kwargs: Any) -> None:
+    def critical(self, *args: Any, thread_id: Optional[str] = None, **kwargs: Any) -> None:
         """Log a message with the 'critical' level.
 
         Args:
-            thread_id (str | None): Optional thread ID for logging context.
+            thread_id (Optional[str]): Optional thread ID for logging context.
             *args: Positional arguments for the log message.
             **kwargs: Keyword arguments for the log message.
         """
