@@ -2,7 +2,7 @@ import logging
 import os
 import sys
 import textwrap
-from typing import Any, Optional, Union
+from typing import Any, Optional
 
 IS_GCP_ENVIRONMENT = bool(os.getenv("K_SERVICE")) or bool(
     os.getenv("GOOGLE_CLOUD_PROJECT")
@@ -26,7 +26,7 @@ METHOD_TO_COLOR_BG = {
     "runtime": BRIGHT_MAGENTA_BG,
     "think": LIGHTBLUE_BG,
     "debug": GREEN_BG,
-    "warn": YELLOW_BG,
+    "warning": YELLOW_BG,
     "error": RED_BG,
     "critical": BRIGHT_RED_BG,
 }
@@ -37,7 +37,7 @@ METHOD_TO_LOGGING_LEVEL = {
     "runtime": logging.INFO,
     "think": logging.INFO,
     "debug": logging.DEBUG,
-    "warn": logging.WARNING,
+    "warning": logging.WARNING,
     "error": logging.ERROR,
     "critical": logging.CRITICAL,
 }
@@ -383,15 +383,15 @@ class Logger:
         """
         self._process_log_call("debug", thread_id, *args, **kwargs)
 
-    def warn(self, *args: Any, thread_id: Optional[str] = None, **kwargs: Any) -> None:
-        """Log a message with the 'warn' level.
+    def warning(self, *args: Any, thread_id: Optional[str] = None, **kwargs: Any) -> None:
+        """Log a message with the 'warning' level.
 
         Args:
             thread_id (Optional[str]): Optional thread ID for logging context.
             *args: Positional arguments for the log message.
             **kwargs: Keyword arguments for the log message.
         """
-        self._process_log_call("warn", thread_id, *args, **kwargs)
+        self._process_log_call("warning", thread_id, *args, **kwargs)
 
     def error(self, *args: Any, thread_id: Optional[str] = None, **kwargs: Any) -> None:
         """Log a message with the 'error' level.
