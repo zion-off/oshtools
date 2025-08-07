@@ -184,7 +184,7 @@ class Logger:
     """
 
     def __init__(
-        self, name: str, level: int = logging.INFO, thread_id: Optional[str] = None
+        self, name: str, level: int = logging.DEBUG, thread_id: Optional[str] = None
     ):
         """Initialize the Logger.
 
