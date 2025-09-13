@@ -84,9 +84,14 @@ class LocalColorFormatter(logging.Formatter):
         color_bg = METHOD_TO_COLOR_BG.get(custom_log_type, CYAN_BG)
 
         # Handle JSON formatting for dicts/lists
-        if isinstance(record.msg, (dict, list)) and IS_TTY and not IS_GCP_ENVIRONMENT:
+        if isinstance(record.msg, (dict, list)) and not IS_GCP_ENVIRONMENT:
             try:
-                message_content = "\n" + json.dumps(record.msg, indent=2, ensure_ascii=False)
+                if IS_TTY:
+                    # Pretty format for terminals
+                    message_content = "\n" + json.dumps(record.msg, indent=2, ensure_ascii=False)
+                else:
+                    # Compact format for non-terminals (Docker, etc.)
+                    message_content = json.dumps(record.msg, ensure_ascii=False)
             except (TypeError, ValueError):
                 message_content = record.getMessage()
         else:
