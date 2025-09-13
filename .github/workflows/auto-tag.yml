@@ -36,3 +36,10 @@ jobs:
           git config user.email github-actions@github.com
           git tag ${{ steps.version.outputs.version }}
           git push origin ${{ steps.version.outputs.version }}
+
+      - name: Trigger python-publish workflow
+        if: steps.tag_exists.outputs.exists == 'false'
+        run: |
+          gh workflow run python-publish.yml --ref ${{ steps.version.outputs.version }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
