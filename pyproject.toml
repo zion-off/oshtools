@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "oshtools"
-version = "0.1.7"
+version = "0.1.8"
 authors = [
     {name = "zion", email = "atibjawad@gmail.com"},
 ]
 description = "A simple Python logging library for chat applications"
 readme = "README.md"
 license = {text = "MIT"}
-requires-python = ">=3.8"
+requires-python = ">=3.8.1"
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -26,11 +26,19 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: System :: Logging",
 ]
-keywords = ["llm", "chat", "logging", "gcp", "google-cloud", "logger"]
-dependencies = []
+keywords = ["llm", "chat", "logging", "gcp", "google-cloud", "logger", "datadog", "structlog"]
+dependencies = [
+    "ruff>=0.13.2",
+    "structlog>=23.0.0",
+]
 
 [project.optional-dependencies]
 gcp = ["google-cloud-logging>=3.0.0"]
+datadog = ["ddtrace>=2.0.0"]
+all = [
+    "google-cloud-logging>=3.0.0",
+    "ddtrace>=2.0.0",
+]
 dev = [
     "pytest>=7.0.0",
     "black>=23.0.0",
