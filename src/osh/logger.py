@@ -1,9 +1,10 @@
 import json
-import logging
 import os
 import sys
 import textwrap
-from typing import Any
+from typing import Any, Dict, Optional
+
+import structlog
 
 IS_GCP_ENVIRONMENT = bool(os.getenv("K_SERVICE")) or bool(
     os.getenv("GOOGLE_CLOUD_PROJECT")
@@ -32,79 +33,97 @@ METHOD_TO_COLOR_BG = {
     "critical": BRIGHT_RED_BG,
 }
 
-METHOD_TO_LOGGING_LEVEL = {
-    "log": logging.INFO,
-    "info": logging.INFO,
-    "runtime": logging.INFO,
-    "think": logging.INFO,
-    "debug": logging.DEBUG,
-    "warning": logging.WARNING,
-    "error": logging.ERROR,
-    "critical": logging.CRITICAL,
-}
+
+def add_custom_log_type(
+    logger: Any, method_name: str, event_dict: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Add custom log type if not already present.
+
+    Args:
+        logger: The logger instance
+        method_name: The method name
+        event_dict: The event dictionary
+
+    Returns:
+        Dict[str, Any]: The event dictionary with custom_log_type added
+    """
+    if "custom_log_type" not in event_dict:
+        event_dict["custom_log_type"] = method_name
+    return event_dict
 
 
-class LocalColorFormatter(logging.Formatter):
-    """Custom formatter for adding color and formatting to log messages.
+def add_logger_name(
+    logger: Any, method_name: str, event_dict: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Add logger name to event dict.
+
+    Args:
+        logger: The logger instance
+        method_name: The method name
+        event_dict: The event dictionary
+
+    Returns:
+        Dict[str, Any]: The event dictionary with logger_name added
+    """
+    if hasattr(logger, "_logger_name"):
+        event_dict["logger_name"] = logger._logger_name
+    return event_dict
+
+
+class ColoredConsoleRenderer:
+    """Renderer for colored console output with formatting similar to original logger.
 
     Attributes:
-        logger_display_name_formatted (str): The formatted display name of the logger.
-        enable_timestamps_func (callable): A function to determine if timestamps should be enabled.
+        logger_display_name: The formatted display name of the logger
+        enable_timestamps: Whether to show timestamps
     """
 
-    def __init__(
-        self, logger_display_name_formatted: str, enable_timestamps_func, **kwargs
-    ):
-        """Initialize the LocalColorFormatter.
+    def __init__(self, logger_display_name: str, enable_timestamps: bool = False):
+        """Initialize the ColoredConsoleRenderer.
 
         Args:
-            logger_display_name_formatted (str): The formatted display name of the logger.
-            enable_timestamps_func (callable): A function to determine if timestamps should be enabled.
-            **kwargs: Additional keyword arguments for the base Formatter class.
+            logger_display_name: The formatted display name of the logger
+            enable_timestamps: Whether to show timestamps
         """
-        self.logger_display_name_formatted = logger_display_name_formatted
-        self.enable_timestamps_func = enable_timestamps_func
-        super().__init__(datefmt="%H:%M:%S", **kwargs)
+        self.logger_display_name = logger_display_name
+        self.enable_timestamps = enable_timestamps
 
-    def format(self, record: logging.LogRecord) -> str:
-        """Format a log record with color and additional information.
+    def __call__(self, logger: Any, name: str, event_dict: Dict[str, Any]) -> str:
+        """Render the log event with colors and formatting.
 
         Args:
-            record (logging.LogRecord): The log record to format.
+            logger: The logger instance
+            name: The method name
+            event_dict: The event dictionary
 
         Returns:
-            str: The formatted log message.
+            str: The formatted log message
         """
+        # Extract standard fields
         timestamp_str = ""
-        if self.enable_timestamps_func():
-            s = self.formatTime(record, self.datefmt)
-            timestamp_str = f"[{s}] "
+        if self.enable_timestamps and "timestamp" in event_dict:
+            timestamp_str = f"[{event_dict['timestamp']}] "
 
-        custom_log_type = getattr(record, "custom_log_type", record.levelname.lower())
+        custom_log_type = event_dict.get("custom_log_type", "log")
         color_bg = METHOD_TO_COLOR_BG.get(custom_log_type, CYAN_BG)
 
-        # Handle JSON formatting for dicts/lists
-        if isinstance(record.msg, (dict, list)) and not IS_GCP_ENVIRONMENT:
-            try:
-                if IS_TTY:
-                    # Pretty format for terminals
-                    message_content = "\n" + json.dumps(record.msg, indent=2, ensure_ascii=False)
-                else:
-                    # Compact format for non-terminals (Docker, etc.)
-                    message_content = json.dumps(record.msg, ensure_ascii=False)
-            except (TypeError, ValueError):
-                message_content = record.getMessage()
-        else:
-            message_content = record.getMessage()
+        # Get the main event message
+        event_msg = event_dict.pop("event", "")
 
-        header = f"{timestamp_str}{color_bg}{BLACK_FG}{self.logger_display_name_formatted}{RESET} "
-        visual_header_length = (
-            len(timestamp_str) + len(self.logger_display_name_formatted) + 1
-        )
+        # Handle JSON formatting for dicts/lists
+        if isinstance(event_msg, (dict, list)):
+            if IS_TTY:
+                message_content = "\n" + json.dumps(event_msg, indent=2, ensure_ascii=False)
+            else:
+                message_content = json.dumps(event_msg, ensure_ascii=False)
+        else:
+            message_content = str(event_msg)
+
+        header = f"{timestamp_str}{color_bg}{BLACK_FG}{self.logger_display_name}{RESET} "
+        visual_header_length = len(timestamp_str) + len(self.logger_display_name) + 1
 
         # Get terminal width for wrapping
         import shutil
-
         term_width = shutil.get_terminal_size().columns
         available_width = term_width - visual_header_length
 
@@ -115,7 +134,7 @@ class LocalColorFormatter(logging.Formatter):
 
         wrapped_lines = []
         for line in lines:
-            if line.strip():  # Only wrap non-empty lines
+            if line.strip():
                 wrapped = textwrap.fill(line, width=available_width)
                 wrapped_lines.extend(wrapped.splitlines())
             else:
@@ -125,371 +144,247 @@ class LocalColorFormatter(logging.Formatter):
         if len(wrapped_lines) > 1:
             padding_for_subsequent_lines = " " * visual_header_length
             for i in range(1, len(wrapped_lines)):
-                indented_message += (
-                    f"\n{padding_for_subsequent_lines}{wrapped_lines[i]}"
-                )
+                indented_message += f"\n{padding_for_subsequent_lines}{wrapped_lines[i]}"
 
         formatted_log = header + indented_message
 
-        if record.exc_info:
-            if not record.exc_text:
-                record.exc_text = self.formatException(record.exc_info)
+        # Handle exception info
+        if "exception" in event_dict:
             padding_for_exception = " " * visual_header_length
             if indented_message and not indented_message.endswith("\n"):
                 formatted_log += "\n"
-            formatted_log += (
-                f"{padding_for_exception}Traceback (most recent call last):"
-            )
+            formatted_log += f"{padding_for_exception}Traceback (most recent call last):"
 
-            for tb_line in record.exc_text.splitlines():
+            exc_text = event_dict["exception"]
+            for tb_line in exc_text.splitlines():
                 available_width = term_width - len(padding_for_exception)
                 while tb_line:
                     current_line = tb_line[:available_width]
                     formatted_log += f"\n{padding_for_exception}{current_line}"
                     tb_line = tb_line[available_width:]
+
         return formatted_log
 
 
-class AddFormattedCliOutputFilter(logging.Filter):
-    """Filter to add formatted CLI output to log records.
+class GCPStructuredRenderer:
+    """Renderer for GCP Cloud Logging structured JSON output."""
 
-    Attributes:
-        local_color_formatter (LocalColorFormatter): The formatter used for CLI output.
-    """
-
-    def __init__(self, local_color_formatter: LocalColorFormatter, name=""):
-        """Initialize the filter.
+    def __call__(self, logger: Any, name: str, event_dict: Dict[str, Any]) -> Dict[str, Any]:
+        """Render the log event as structured JSON for GCP.
 
         Args:
-            local_color_formatter (LocalColorFormatter): The formatter used for CLI output.
-            name (str): The name of the filter.
-        """
-        super().__init__(name)
-        self.local_color_formatter = local_color_formatter
-
-    def filter(self, record: logging.LogRecord) -> bool:
-        """Filter the log record and add formatted CLI output.
-
-        Args:
-            record (logging.LogRecord): The log record to filter.
+            logger: The logger instance
+            name: The method name
+            event_dict: The event dictionary
 
         Returns:
-            bool: True to include the record, False otherwise.
+            Dict[str, Any]: The structured log event
         """
-        formatted_string = self.local_color_formatter.format(record)
-        if not hasattr(record, "extra_props"):
-            record.extra_props = {}
+        # Extract the message
+        message = event_dict.pop("event", "")
 
-        record.formatted_cli_output = formatted_string
-        return True
+        # Build structured payload
+        structured_log = {
+            "message": message,
+            "severity": event_dict.pop("level", "INFO").upper(),
+        }
+
+        # Add all remaining fields as jsonPayload
+        for key, value in event_dict.items():
+            if key not in ("timestamp",):  # Skip timestamp, GCP adds its own
+                structured_log[key] = value
+
+        return structured_log
 
 
-class Logger(logging.Logger):
-    """Custom logger class with support for local and GCP logging.
+class Logger:
+    """Structured logger with support for local colored output and GCP Cloud Logging.
 
-    Inherits from logging.Logger and adds:
+    This logger uses structlog under the hood and provides:
     - Colored output with proper formatting for local development
     - Automatic GCP Cloud Logging integration
     - Support for arbitrary fields in log messages
     - Beautiful JSON formatting for complex data structures
-    - Contextual logging with with_fields() method
+    - Contextual logging with bind() method
 
     Attributes:
-        raw_name (str): The raw name of the logger.
-        display_name_formatted (str): The formatted display name of the logger.
-        _enable_timestamps_local (bool): Flag to enable or disable timestamps locally.
-        default_fields (Dict[str, Any]): Default fields to include in all log messages.
+        _logger: The underlying structlog logger
+        _logger_name: The raw name of the logger
+        _display_name_formatted: The formatted display name
+        _enable_timestamps: Whether timestamps are enabled for local output
     """
 
     def __init__(
-        self, name: str, level: int = logging.DEBUG, **fields: Any
+        self,
+        name: str,
+        level: str = "DEBUG",
+        **default_fields: Any,
     ):
         """Initialize the Logger.
 
         Args:
-            name (str): The name of the logger.
-            level (int): The logging level.
-            **fields: Arbitrary fields to include in logs (e.g., thread_id="123").
+            name: The name of the logger
+            level: The logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+            **default_fields: Default fields to include in all logs
         """
-        super().__init__(name, level)
-        self.raw_name = name
-        self.display_name_formatted = f"{name:<15}".upper()
-        self._enable_timestamps_local = False
-        self.default_fields = fields
+        self._logger_name = name
+        self._display_name_formatted = f"{name:<15}".upper()
+        self._enable_timestamps = False
 
-        self.setLevel(level)
-        self.propagate = False
+        # Build processor chain
+        processors = [
+            structlog.stdlib.add_log_level,
+            structlog.stdlib.add_logger_name,
+            structlog.processors.TimeStamper(fmt="%H:%M:%S", utc=False),
+            add_logger_name,
+            add_custom_log_type,
+        ]
 
-        if not self.handlers:
-            if IS_GCP_ENVIRONMENT:
-                try:
-                    import google.cloud.logging as cloud_logging_v2
-
-                    client = cloud_logging_v2.Client()
-                    service_name_for_log = (
-                        os.getenv("K_SERVICE", self.raw_name).lower().replace("-", "_")
-                    )
-                    gcp_log_name = f"python.{service_name_for_log}"
-                    self._setup_gcp_handler(client, gcp_log_name, level)
-                except ImportError:
-                    sys.stderr.write(
-                        "WARNING: google-cloud-logging library not found. GCP logging will not be fully structured. Falling back to local stdout.\n"
-                    )
-                    self._setup_local_handler(level)
-                except Exception as e:
-                    sys.stderr.write(
-                        f"WARNING: Failed to set up GCP logging handler: {e}. Falling back to local stdout.\n"
-                    )
-                    self._setup_local_handler(level)
-            else:
-                self._setup_local_handler(level)
-
-    def _get_enable_timestamps_local(self):
-        """Get the local timestamp enable flag.
-
-        Returns:
-            bool: True if timestamps are enabled locally, False otherwise.
-        """
-        return self._enable_timestamps_local
-
-    def _setup_local_handler(self, level_int: int):
-        """Set up the local logging handler.
-
-        Args:
-            level_int (int): The logging level for the handler.
-        """
-        local_handler = logging.StreamHandler(sys.stdout)
-        local_handler.setLevel(level_int)
-        formatter = LocalColorFormatter(
-            logger_display_name_formatted=self.display_name_formatted,
-            enable_timestamps_func=self._get_enable_timestamps_local,
-        )
-        local_handler.setFormatter(formatter)
-        self.addHandler(local_handler)
-
-    def _setup_gcp_handler(self, client, gcp_log_name, level_int: int):
-        """Set up the GCP logging handler.
-
-        Args:
-            client: The GCP logging client.
-            gcp_log_name (str): The name of the GCP log.
-            level_int (int): The logging level for the handler.
-        """
-        from google.cloud.logging_v2.handlers import CloudLoggingHandler
-
-        gcp_handler = CloudLoggingHandler(client, name=gcp_log_name)
-        gcp_handler.setLevel(level_int)
-
-        def add_logger_name_label_filter(record: logging.LogRecord) -> bool:
-            current_labels = getattr(record, "labels", {})
-            if not isinstance(current_labels, dict):
-                current_labels = {}
-            current_labels["logger_name"] = self.raw_name
-            record.labels = current_labels
-            return True
-
-        gcp_handler.addFilter(add_logger_name_label_filter)
-
-        local_formatter_for_filter = LocalColorFormatter(
-            logger_display_name_formatted=self.display_name_formatted,
-            enable_timestamps_func=self._get_enable_timestamps_local,
-        )
-        cli_output_filter = AddFormattedCliOutputFilter(local_formatter_for_filter)
-        gcp_handler.addFilter(cli_output_filter)
-
-        self.addHandler(gcp_handler)
-
-    def _format_json_message(self, data: Any) -> Any:
-        """Return data as-is for JSON formatting by the formatter."""
-        return data
-
-    def _process_log_call(
-        self,
-        method_type: str,
-        *args: Any,
-        **kwargs: Any,
-    ):
-        """Process a log call with the specified method type.
-
-        Args:
-            method_type (str): The type of log method (e.g., 'log', 'error').
-            *args: Positional arguments for the log message.
-            **kwargs: Keyword arguments and fields for the log message.
-        """
-        # Extract standard logging kwargs
-        extra_data = kwargs.pop("extra_data", {}) or {}
-        exc_info_val = kwargs.pop("exc_info", None)
-        stack_info_val = kwargs.pop("stack_info", False)
-        kwargs.pop("file", None)
-
-        # Remaining kwargs are treated as fields
-        call_fields = kwargs
-        all_fields = {**self.default_fields, **call_fields}
-
-        message_val: Any
-        if len(args) == 1 and isinstance(args[0], (dict, list)):
-            # Pass the raw data for JSON formatting in the formatter
-            message_val = args[0]
-        else:
-            message_val = " ".join(str(arg) for arg in args)
-
-        extra_payload_for_record = extra_data.copy()
-        extra_payload_for_record["custom_log_type"] = method_type
-        extra_payload_for_record.update(all_fields)
-
+        # Choose renderer based on environment
         if IS_GCP_ENVIRONMENT:
-            labels = {
-                "python_logger": self.raw_name,
-            }
-            # Add all fields as labels in GCP
-            labels.update({str(k): str(v) for k, v in all_fields.items()})
-            extra_payload_for_record["labels"] = labels
+            processors.append(GCPStructuredRenderer())
+            processors.append(structlog.processors.JSONRenderer())
+        else:
+            processors.append(
+                ColoredConsoleRenderer(
+                    logger_display_name=self._display_name_formatted,
+                    enable_timestamps=self._enable_timestamps,
+                )
+            )
 
-        if method_type in ["error", "critical"] and exc_info_val is None:
-            exc_info_val = sys.exc_info() != (None, None, None)
-
-        level_to_log = METHOD_TO_LOGGING_LEVEL[method_type]
-
-        super().log(
-            level_to_log,
-            message_val,
-            exc_info=exc_info_val,
-            stack_info=stack_info_val,
-            extra=extra_payload_for_record,
+        # Configure structlog
+        structlog.configure(
+            processors=processors,
+            wrapper_class=structlog.stdlib.BoundLogger,
+            context_class=dict,
+            logger_factory=structlog.PrintLoggerFactory(),
+            cache_logger_on_first_use=True,
         )
 
-    def log(self, *args: Any, **kwargs: Any) -> None:
-        """Log a message with the 'log' level.
+        # Create logger instance
+        self._logger = structlog.get_logger(name)
 
-        Args:
-            *args: Positional arguments for the log message.
-            **kwargs: Keyword arguments and fields for the log message.
-        """
-        self._process_log_call("log", *args, **kwargs)
+        # Bind default fields
+        if default_fields:
+            self._logger = self._logger.bind(**default_fields)
 
-    def info(self, *args: Any, **kwargs: Any) -> None:
-        """Log a message with the 'info' level.
-
-        Args:
-            *args: Positional arguments for the log message.
-            **kwargs: Keyword arguments and fields for the log message.
-        """
-        self._process_log_call("info", *args, **kwargs)
-
-    def runtime(self, *args: Any, **kwargs: Any) -> None:
-        """Log a message with the 'runtime' level.
-
-        Args:
-            *args: Positional arguments for the log message.
-            **kwargs: Keyword arguments and fields for the log message.
-        """
-        self._process_log_call("runtime", *args, **kwargs)
-
-    def think(self, *args: Any, **kwargs: Any) -> None:
-        """Log a message with the 'think' level.
-
-        Args:
-            *args: Positional arguments for the log message.
-            **kwargs: Keyword arguments and fields for the log message.
-        """
-        self._process_log_call("think", *args, **kwargs)
-
-    def debug(self, *args: Any, **kwargs: Any) -> None:
-        """Log a message with the 'debug' level.
-
-        Args:
-            *args: Positional arguments for the log message.
-            **kwargs: Keyword arguments and fields for the log message.
-        """
-        self._process_log_call("debug", *args, **kwargs)
-
-    def warning(self, *args: Any, **kwargs: Any) -> None:
-        """Log a message with the 'warning' level.
-
-        Args:
-            *args: Positional arguments for the log message.
-            **kwargs: Keyword arguments and fields for the log message.
-        """
-        self._process_log_call("warning", *args, **kwargs)
-
-    def error(self, *args: Any, **kwargs: Any) -> None:
-        """Log a message with the 'error' level.
-
-        Args:
-            *args: Positional arguments for the log message.
-            **kwargs: Keyword arguments and fields for the log message.
-        """
-        self._process_log_call("error", *args, **kwargs)
-
-    def critical(self, *args: Any, **kwargs: Any) -> None:
-        """Log a message with the 'critical' level.
-
-        Args:
-            *args: Positional arguments for the log message.
-            **kwargs: Keyword arguments and fields for the log message.
-        """
-        self._process_log_call("critical", *args, **kwargs)
+        # Store logger name for processor access
+        self._logger._logger_name = name
 
     def set_timestamps(self, enabled: bool) -> None:
         """Enable or disable timestamps in log messages.
 
         Args:
-            enabled (bool): True to enable timestamps, False to disable.
+            enabled: True to enable timestamps, False to disable
         """
-        self._enable_timestamps_local = enabled
-        if not IS_GCP_ENVIRONMENT and not IS_TTY:
-            for handler in self.handlers:
-                if isinstance(handler.formatter, logging.Formatter) and not isinstance(
-                    handler.formatter, LocalColorFormatter
-                ):
-                    fmt_str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-                    if not self._enable_timestamps_local:
-                        fmt_str = "%(name)s - %(levelname)s - %(message)s"
-                    new_formatter = logging.Formatter(
-                        fmt_str, datefmt="%Y-%m-%d %H:%M:%S"
-                    )
-                    handler.setFormatter(new_formatter)
+        self._enable_timestamps = enabled
 
-    def struct_log(
-        self,
-        message: str,
-        level: int = logging.INFO,
-        _custom_type: str = "log",
-        **fields,
-    ) -> None:
-        """Log a structured message with additional fields.
+    def bind(self, **fields: Any) -> "Logger":
+        """Create a new logger instance with additional bound fields.
 
         Args:
-            message (str): The log message.
-            level (int): The logging level.
-            _custom_type (str): The custom log type.
-            **fields: Additional fields to include in the log.
-        """
-        # Merge default fields with provided fields
-        all_fields = {**self.default_fields, **fields}
-
-        payload = all_fields.copy()
-        payload["custom_log_type"] = _custom_type
-
-        if IS_GCP_ENVIRONMENT:
-            labels = {
-                "python_logger": self.raw_name,
-            }
-            # Add all fields as labels in GCP
-            labels.update({str(k): str(v) for k, v in all_fields.items()})
-            payload["labels"] = labels
-
-        super().log(level, message, extra=payload)
-
-    def with_fields(self, **fields: Any) -> 'Logger':
-        """Create a new logger instance with additional default fields.
-
-        Args:
-            **fields: Additional fields to include in all logs from the returned logger.
+            **fields: Additional fields to include in all logs
 
         Returns:
-            Logger: A new logger instance with the combined fields.
+            Logger: A new logger instance with the bound fields
         """
-        combined_fields = {**self.default_fields, **fields}
-        new_logger = Logger(self.raw_name, self.level, **combined_fields)
+        new_logger = Logger(self._logger_name)
+        # Copy the bound context
+        new_logger._logger = self._logger.bind(**fields)
+        new_logger._logger._logger_name = self._logger_name
+        new_logger._enable_timestamps = self._enable_timestamps
         return new_logger
+
+    def log(self, *args: Any, **kwargs: Any) -> None:
+        """Log a message with the 'log' level.
+
+        Args:
+            *args: Message parts to log
+            **kwargs: Additional fields to include
+        """
+        message = " ".join(str(arg) for arg in args) if args else ""
+        self._logger.info(message, custom_log_type="log", **kwargs)
+
+    def info(self, *args: Any, **kwargs: Any) -> None:
+        """Log a message with the 'info' level.
+
+        Args:
+            *args: Message parts to log
+            **kwargs: Additional fields to include
+        """
+        message = " ".join(str(arg) for arg in args) if args else ""
+        self._logger.info(message, custom_log_type="info", **kwargs)
+
+    def runtime(self, *args: Any, **kwargs: Any) -> None:
+        """Log a message with the 'runtime' level.
+
+        Args:
+            *args: Message parts to log
+            **kwargs: Additional fields to include
+        """
+        message = " ".join(str(arg) for arg in args) if args else ""
+        self._logger.info(message, custom_log_type="runtime", **kwargs)
+
+    def think(self, *args: Any, **kwargs: Any) -> None:
+        """Log a message with the 'think' level.
+
+        Args:
+            *args: Message parts to log
+            **kwargs: Additional fields to include
+        """
+        message = " ".join(str(arg) for arg in args) if args else ""
+        self._logger.info(message, custom_log_type="think", **kwargs)
+
+    def debug(self, *args: Any, **kwargs: Any) -> None:
+        """Log a message with the 'debug' level.
+
+        Args:
+            *args: Message parts to log
+            **kwargs: Additional fields to include
+        """
+        message = " ".join(str(arg) for arg in args) if args else ""
+        self._logger.debug(message, custom_log_type="debug", **kwargs)
+
+    def warning(self, *args: Any, **kwargs: Any) -> None:
+        """Log a message with the 'warning' level.
+
+        Args:
+            *args: Message parts to log
+            **kwargs: Additional fields to include
+        """
+        message = " ".join(str(arg) for arg in args) if args else ""
+        self._logger.warning(message, custom_log_type="warning", **kwargs)
+
+    def error(self, *args: Any, exc_info: bool = True, **kwargs: Any) -> None:
+        """Log a message with the 'error' level.
+
+        Args:
+            *args: Message parts to log
+            exc_info: Whether to include exception info
+            **kwargs: Additional fields to include
+        """
+        message = " ".join(str(arg) for arg in args) if args else ""
+        self._logger.error(message, custom_log_type="error", exc_info=exc_info, **kwargs)
+
+    def critical(self, *args: Any, exc_info: bool = True, **kwargs: Any) -> None:
+        """Log a message with the 'critical' level.
+
+        Args:
+            *args: Message parts to log
+            exc_info: Whether to include exception info
+            **kwargs: Additional fields to include
+        """
+        message = " ".join(str(arg) for arg in args) if args else ""
+        self._logger.critical(message, custom_log_type="critical", exc_info=exc_info, **kwargs)
+
+    # Maintain backward compatibility
+    def with_fields(self, **fields: Any) -> "Logger":
+        """Alias for bind() to maintain backward compatibility.
+
+        Args:
+            **fields: Additional fields to include in all logs
+
+        Returns:
+            Logger: A new logger instance with the bound fields
+        """
+        return self.bind(**fields)
